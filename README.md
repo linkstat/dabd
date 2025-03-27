@@ -1,6 +1,6 @@
 # Desarrollo de Aplicaciones con Bases de Datos (DABD)
 
-![Banner](https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Fcdn-icons-png.flaticon.com%2F512%2F8637%2F8637124.png&f=1&nofb=1&ipt=c62799ec5e930c2497a7985fbcd242c238b63c13c5a000e2138b3fe3ca5762dc&ipo=images)
+![Banner]<img src="https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Fcdn-icons-png.flaticon.com%2F512%2F8637%2F8637124.png&f=1&nofb=1&ipt=c62799ec5e930c2497a7985fbcd242c238b63c13c5a000e2138b3fe3ca5762dc&ipo=images" alt="Banner" width="50%">
 
 Bienvenido al repositorio **dabd**.  
 En este espacio se desarrollan y evolucionan las actividades correspondientes a la materia **Desarrollo de Aplicaciones con Bases de Datos**.
