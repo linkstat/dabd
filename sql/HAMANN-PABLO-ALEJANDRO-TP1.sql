@@ -153,15 +153,17 @@ CREATE TABLE Productos (
  */
 CREATE TABLE Pedidos (
     idpedido BINARY(16) NOT NULL PRIMARY KEY,
-    NumeroPedido INT NOT NULL UNIQUE,
+    NumeroPedido INT NOT NULL AUTO_INCREMENT,
     idcliente BINARY(16) NOT NULL,
     idvendedor BINARY(16) NOT NULL,
     fecha DATE NOT NULL,
     Estado ENUM('pendiente', 'confirmado', 'anulado') NOT NULL DEFAULT 'pendiente',
     CONSTRAINT fk_pedido_cliente FOREIGN KEY (idcliente) REFERENCES Clientes(idcliente)
         ON DELETE RESTRICT,
-    CONSTRAINT fk_pedido_vendedor FOREIGN KEY (idvendedor) REFERENCES Vendedor(idvendedor)
+    CONSTRAINT fk_pedido_vendedor FOREIGN KEY (idvendedor) REFERENCES Vendedor(idvendedor),
+    UNIQUE KEY (NumeroPedido)
 );
+
 
 -- Misma lógica de 'modificación sutil' que poara la tabla anterior
 CREATE TABLE DetallePedidos (
@@ -184,7 +186,7 @@ CREATE TABLE DetallePedidos (
  */
 CREATE TABLE LogAnulaciones (
     idLogAnulaciones BINARY(16) NOT NULL PRIMARY KEY,
-    idpedido BINARY(16) NOT NULL,  -- referencia a la PK de la tabla Pedidos
+    idpedido BINARY(16) NOT NULL,
     FechaAnulacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     Observaciones TEXT,
     CONSTRAINT fk_log_idpedido FOREIGN KEY (idpedido) REFERENCES Pedidos(idpedido)
@@ -193,6 +195,90 @@ CREATE TABLE LogAnulaciones (
 
 -- Rehabilitar las Restricciones de Claves Foráneas
 SET FOREIGN_KEY_CHECKS = 1;
+
+
+/* En al consigna, se indican ciertas restricciones
+ * Para poder cumplir con estas restricciones, necesitamos ciertos triggers que nos ayudena  cumplirlas.
+ * En este trigger BEFORE INSERT para DetallePedidos asegura que:
+ * -> se consulte el stock disponible y el precio unitario actual del producto (según su idproducto).
+ * -> se produzca un error si el stock es insuficiente para la cantidad solicitada.
+ * -> se asigne el precio unitario del producto en el campo correspondiente del detalle.
+ */
+DELIMITER $$
+CREATE TRIGGER trg_before_insert_detalle
+BEFORE INSERT ON DetallePedidos
+FOR EACH ROW
+BEGIN
+    DECLARE v_stock INT;
+    DECLARE v_precio DECIMAL(10,2);
+
+    -- Obtener stock y precio unitario del producto
+    SELECT Stock, PrecioUnitario
+      INTO v_stock, v_precio
+      FROM Productos
+     WHERE idproducto = NEW.idproducto;
+     
+    -- Verificar que haya stock suficiente
+    IF v_stock < NEW.cantidad THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Stock insuficiente para el producto';
+    END IF;
+    
+    -- Asignar el precio unitario obtenido
+    SET NEW.PrecioUnitario = v_precio;
+END;
+$$
+DELIMITER ;
+
+
+/* Otra imposición de la consigna a resolver, consiste en actualizar el stock del producto al confirmar el pedido.
+ * Este trigger sobre la tabla Pedidos se dispara después de una actualización:
+ * -> cuando el estado de un pedido cambia a 'confirmado' (si es que previamente no lo estaba), se actualiza el stock de cada producto restando la cantidad pedida.
+ */
+DELIMITER $$
+CREATE TRIGGER trg_after_update_confirmado
+AFTER UPDATE ON Pedidos
+FOR EACH ROW
+BEGIN
+    IF NEW.Estado = 'confirmado' AND OLD.Estado <> 'confirmado' THEN
+        UPDATE Productos p
+        JOIN DetallePedidos d ON p.idproducto = d.idproducto
+        SET p.Stock = p.Stock - d.cantidad
+        WHERE d.NumeroPedido = NEW.NumeroPedido;
+    END IF;
+END;
+$$
+DELIMITER ;
+
+
+/* Otra regla de negocio indicada en la consigna, indica que, 
+ * -> Todo pedido anulado debe ser auditado, grabando en la tabla de log, la información del pedido anulado, indicando la fecha de anulación.
+ * -> El sistema debe recomponer el stock de cada pedido confirmado que es anulado.
+ * Entonces, cuando se anula un pedido (cambiando el estado a 'anulado'),
+ * este trigger sobre la tabla Pedidos, en su acción acción AFTER UPDATE, realizará lo siguiente:
+ * -> Registrar en LogAnulaciones la información del pedido anulado (incluida la fecha de anulación).
+ * -> Reponer el stock de los productos involucrados (sumando las cantidades que se restaron previamente).
+ */
+DELIMITER $$
+CREATE TRIGGER trg_after_update_anulado
+AFTER UPDATE ON Pedidos
+FOR EACH ROW
+BEGIN
+    IF NEW.Estado = 'anulado' AND OLD.Estado = 'confirmado' THEN
+        -- Recomponer stock: sumar cantidades de cada detalle del pedido anulado
+        UPDATE Productos p
+        JOIN DetallePedidos d ON p.idproducto = d.idproducto
+        SET p.Stock = p.Stock + d.cantidad
+        WHERE d.NumeroPedido = NEW.NumeroPedido;
+        
+        -- Registrar en LogAnulaciones
+        INSERT INTO LogAnulaciones (idLogAnulaciones, idpedido, FechaAnulacion, Observaciones)
+        VALUES (UUID_TO_BIN(UUID()), NEW.idpedido, NOW(),
+                CONCAT('Pedido ', NEW.NumeroPedido, ' anulado.'));
+    END IF;
+END;
+$$
+DELIMITER ;
 
 
 
@@ -268,6 +354,139 @@ VALUES
 
 
 -- Ingresar 10 pedidos en total con diferente cantidad de renglones (se sugiere crear pedidos con 1, 2 o 3 renglones máximo).
+-- Generamos y almacenamos los UUID para los 10 pedidos solicitados
+SET @uuid_pedido01 = UUID_TO_BIN(UUID());
+SET @uuid_pedido02 = UUID_TO_BIN(UUID());
+SET @uuid_pedido03 = UUID_TO_BIN(UUID());
+SET @uuid_pedido04 = UUID_TO_BIN(UUID());
+SET @uuid_pedido05 = UUID_TO_BIN(UUID());
+SET @uuid_pedido06 = UUID_TO_BIN(UUID());
+SET @uuid_pedido07 = UUID_TO_BIN(UUID());
+SET @uuid_pedido08 = UUID_TO_BIN(UUID());
+SET @uuid_pedido09 = UUID_TO_BIN(UUID());
+SET @uuid_pedido10 = UUID_TO_BIN(UUID());
 
+-- Genero pedidos (al hacer un INSERT MULTIROW, pierdo la posibilidad de usar LAST_INSERT_ID(); para la variable @numPedido, pero sigue siendo más legible y me resulta cómodo en gral)
+INSERT INTO Pedidos (idpedido, idcliente, idvendedor, fecha, Estado)
+VALUES
+	(@uuid_pedido01, @uuid_cliente1, @uuid_vendedor1, '2025-04-05', 'confirmado'),
+	(@uuid_pedido02, @uuid_cliente5, @uuid_vendedor2, '2025-04-05', 'confirmado'),
+	(@uuid_pedido03, @uuid_cliente1, @uuid_vendedor1, '2025-04-05', 'pendiente'),
+	(@uuid_pedido04, @uuid_cliente4, @uuid_vendedor2, '2025-04-05', 'confirmado'),
+	(@uuid_pedido05, @uuid_cliente2, @uuid_vendedor3, '2025-04-05', 'confirmado'),
+	(@uuid_pedido06, @uuid_cliente2, @uuid_vendedor3, '2025-04-05', 'pendiente'),
+	(@uuid_pedido07, @uuid_cliente1, @uuid_vendedor3, '2025-04-05', 'confirmado'),
+	(@uuid_pedido08, @uuid_cliente3, @uuid_vendedor2, '2025-04-05', 'confirmado'),
+	(@uuid_pedido09, @uuid_cliente4, @uuid_vendedor2, '2025-04-05', 'pendiente'),
+	(@uuid_pedido10, @uuid_cliente3, @uuid_vendedor2, '2025-04-05', 'confirmado');
+
+
+-- Pedido 01 de 10 (3 renglones)
+-- Nota, los números de pedido son autoincrementales (no se introducen manualmente),
+-- asi que recupero el valor que necesito en cada caso, realizando una consulta (tengo/conozco el @uuid_pedidoNN)
+SELECT NumeroPedido INTO @numPedido FROM Pedidos WHERE idpedido = @uuid_pedido01;
+-- Genero en cada caso los UUID para el detalle de pedido (y no antes todos juntos para no perderme)
+SET @uuid_DP01r1 = UUID_TO_BIN(UUID()); -- Pedido 1 Renglón 1
+SET @uuid_DP01r2 = UUID_TO_BIN(UUID()); -- Pedido 1 Renglón 2
+SET @uuid_DP01r3 = UUID_TO_BIN(UUID()); -- Pedido 1 Renglón 3
+INSERT INTO DetallePedidos (idDetallePedido, NumeroPedido, renglon, idproducto, cantidad)
+VALUES 
+    (@uuid_DP01r1, @numPedido, 1, @uuid_prod01, 5),
+    (@uuid_DP01r2, @numPedido, 2, @uuid_prod02, 3),
+    (@uuid_DP01r3, @numPedido, 3, @uuid_prod03, 2);
+
+
+-- Pedido 02 de 10 (1 renglón)
+SELECT NumeroPedido INTO @numPedido FROM Pedidos WHERE idpedido = @uuid_pedido02;
+SET @uuid_DP02r1 = UUID_TO_BIN(UUID());
+INSERT INTO DetallePedidos (idDetallePedido, NumeroPedido, renglon, idproducto, cantidad)
+VALUES (@uuid_DP02r1, @numPedido, 1, @uuid_prod05, 20);
+
+
+-- Pedido 03 de 10 (2 renglones)
+SELECT NumeroPedido INTO @numPedido FROM Pedidos WHERE idpedido = @uuid_pedido03;
+SET @uuid_DP03r1 = UUID_TO_BIN(UUID());
+SET @uuid_DP03r2 = UUID_TO_BIN(UUID());
+INSERT INTO DetallePedidos (idDetallePedido, NumeroPedido, renglon, idproducto, cantidad)
+VALUES 
+    (@uuid_DP03r1, @numPedido, 1, @uuid_prod01, 9),
+    (@uuid_DP03r2, @numPedido, 2, @uuid_prod04, 12);
+
+
+-- Pedido 04 de 10 (3 renglones)
+SELECT NumeroPedido INTO @numPedido FROM Pedidos WHERE idpedido = @uuid_pedido04;
+SET @uuid_DP04r1 = UUID_TO_BIN(UUID());
+SET @uuid_DP04r2 = UUID_TO_BIN(UUID());
+SET @uuid_DP04r3 = UUID_TO_BIN(UUID());
+
+INSERT INTO DetallePedidos (idDetallePedido, NumeroPedido, renglon, idproducto, cantidad)
+VALUES 
+    (@uuid_DP04r1, @numPedido, 1, @uuid_prod09, 15),
+    (@uuid_DP04r2, @numPedido, 2, @uuid_prod06, 22),
+    (@uuid_DP04r3, @numPedido, 3, @uuid_prod08, 4);
+
+
+-- Pedido 05 de 10 (1 renglón)
+SELECT NumeroPedido INTO @numPedido FROM Pedidos WHERE idpedido = @uuid_pedido05;
+SET @uuid_DP05r1 = UUID_TO_BIN(UUID());
+
+INSERT INTO DetallePedidos (idDetallePedido, NumeroPedido, renglon, idproducto, cantidad)
+VALUES (@uuid_DP05r1, @numPedido, 1, @uuid_prod10, 14);
+
+
+-- Pedido 06 de 10 (2 renglones)
+SELECT NumeroPedido INTO @numPedido FROM Pedidos WHERE idpedido = @uuid_pedido06;
+SET @uuid_DP06r1 = UUID_TO_BIN(UUID());
+SET @uuid_DP06r2 = UUID_TO_BIN(UUID());
+
+INSERT INTO DetallePedidos (idDetallePedido, NumeroPedido, renglon, idproducto, cantidad)
+VALUES 
+    (@uuid_DP06r1, @numPedido, 1, @uuid_prod04, 75),
+    (@uuid_DP06r2, @numPedido, 2, @uuid_prod08, 23);
+
+
+-- Pedido 07 de 10 (3 renglones)
+SELECT NumeroPedido INTO @numPedido FROM Pedidos WHERE idpedido = @uuid_pedido07;
+SET @uuid_DP07r1 = UUID_TO_BIN(UUID());
+SET @uuid_DP07r2 = UUID_TO_BIN(UUID());
+SET @uuid_DP07r3 = UUID_TO_BIN(UUID());
+
+INSERT INTO DetallePedidos (idDetallePedido, NumeroPedido, renglon, idproducto, cantidad)
+VALUES 
+    (@uuid_DP07r1, @numPedido, 1, @uuid_prod07, 38),
+    (@uuid_DP07r2, @numPedido, 2, @uuid_prod04, 52),
+    (@uuid_DP07r3, @numPedido, 3, @uuid_prod01, 92);
+
+
+-- Pedido 08 de 10 (2 renglones)
+SELECT NumeroPedido INTO @numPedido FROM Pedidos WHERE idpedido = @uuid_pedido08;
+SET @uuid_DP08r1 = UUID_TO_BIN(UUID());
+SET @uuid_DP08r2 = UUID_TO_BIN(UUID());
+
+INSERT INTO DetallePedidos (idDetallePedido, NumeroPedido, renglon, idproducto, cantidad)
+VALUES 
+    (@uuid_DP08r1, @numPedido, 1, @uuid_prod08, 8),
+    (@uuid_DP08r2, @numPedido, 2, @uuid_prod06, 625);
+
+
+-- Pedido 09 de 10 (1 renglón)
+SELECT NumeroPedido INTO @numPedido FROM Pedidos WHERE idpedido = @uuid_pedido09;
+SET @uuid_DP09r1 = UUID_TO_BIN(UUID());
+
+INSERT INTO DetallePedidos (idDetallePedido, NumeroPedido, renglon, idproducto, cantidad)
+VALUES (@uuid_DP09r1, @numPedido, 1, @uuid_prod02, 458);
+
+
+-- Pedido 10 de 10 (3 renglones)
+SELECT NumeroPedido INTO @numPedido FROM Pedidos WHERE idpedido = @uuid_pedido10;
+SET @uuid_DP10r1 = UUID_TO_BIN(UUID());
+SET @uuid_DP10r2 = UUID_TO_BIN(UUID());
+SET @uuid_DP10r3 = UUID_TO_BIN(UUID());
+
+INSERT INTO DetallePedidos (idDetallePedido, NumeroPedido, renglon, idproducto, cantidad)
+VALUES 
+    (@uuid_DP10r1, @numPedido, 1, @uuid_prod05, 15),
+    (@uuid_DP10r2, @numPedido, 2, @uuid_prod03, 22),
+    (@uuid_DP10r3, @numPedido, 3, @uuid_prod08, 490);
 
 
