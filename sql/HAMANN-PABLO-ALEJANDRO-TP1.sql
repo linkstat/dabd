@@ -129,6 +129,7 @@ CREATE TABLE Proveedores (
 
 CREATE TABLE Vendedor (
     idvendedor BINARY(16) NOT NULL PRIMARY KEY,
+    DNI VARCHAR(20) NOT NULL,
     Apellido VARCHAR(100) NOT NULL,
     Nombres VARCHAR(100) NOT NULL,
     email VARCHAR(100) NOT NULL,
@@ -377,11 +378,11 @@ SET @uuid_vendedor1 = UUID_TO_BIN(UUID());
 SET @uuid_vendedor2 = UUID_TO_BIN(UUID());
 SET @uuid_vendedor3 = UUID_TO_BIN(UUID());
 
-INSERT INTO Vendedor (idvendedor, Apellido, Nombres, email, comision)
+INSERT INTO Vendedor (idvendedor, DNI, Apellido, Nombres, email, comision)
 VALUES
-	(@uuid_vendedor1, 'Garay', 'Mauricio Elio', 'mgaray@msn.com', 10.15),
-	(@uuid_vendedor2, 'Cabral Perez', 'Matías', 'mcp@outlook.com', 23.2),
-	(@uuid_vendedor3, 'Castellanos', 'Matías','mcastellanos@gmail.com', 14.6);
+	(@uuid_vendedor1, '36113214', 'Garay', 'Mauricio Elio', 'mgaray@msn.com', 10.15),
+	(@uuid_vendedor2, '28101438', 'Cabral Perez', 'Matías', 'mcp@outlook.com', 23.2),
+	(@uuid_vendedor3, '24741573', 'Castellanos', 'Matías','mcastellanos@gmail.com', 14.6);
 
 
 -- Ingresar al menos 10 productos (distribuidos entre los 3 proveedores creados).
@@ -553,15 +554,19 @@ VALUES
  */
 
 -- Detalle de clientes que realizaron pedidos entre fechas (apellido, nombres, DNI, correo electrónico).
-SET @fehca_desde = '2025-04-01';
-SET @fehca_hasta = '2025-04-30';
+SET @fecha_desde = '2025-04-01';
+SET @fecha_hasta = '2025-04-30';
 SELECT DISTINCT c.Apellido, c.Nombres, c.DNI, c.mail AS 'Email'
 FROM Clientes c
 INNER JOIN Pedidos p ON c.idcliente = p.idcliente
-WHERE p.fecha BETWEEN @fehca_desde AND @fehca_hasta;
+WHERE p.fecha BETWEEN @fecha_desde AND @fecha_hasta;
 
 
 -- Detalle de vendedores con la cantidad de pedidos realizados (apellido, nombres, DNI, correo electrónico, CantidadPedidos).
+SELECT v.Apellido, v.Nombres, v.DNI, v.email AS "Email", COUNT(p.idpedido) AS Cant_Pedidos
+FROM Vendedor v
+LEFT JOIN Pedidos p ON v.idvendedor = p.idvendedor
+GROUP BY v.idvendedor, v.Apellido, v.Nombres, v.DNI, v.email;
 
 
 -- Detalle de pedidos con un total mayor a un determinado valor umbral (NumeroPedido, fecha, TotalPedido).
