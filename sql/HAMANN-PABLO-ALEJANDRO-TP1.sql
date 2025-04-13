@@ -143,7 +143,6 @@ CREATE TABLE Productos (
     StockMin INT NOT NULL,
     idproveedor BINARY(16) NOT NULL,
     origen ENUM('nacional', 'importado') NOT NULL,
-    CONSTRAINT chk_stock_limits CHECK (Stock >= StockMin AND Stock <= StockMax),
     CONSTRAINT fk_producto_proveedor FOREIGN KEY (idproveedor) REFERENCES Proveedores(idproveedor)
 );
 
@@ -197,12 +196,13 @@ CREATE TABLE LogAnulaciones (
 SET FOREIGN_KEY_CHECKS = 1;
 
 
-/* En al consigna, se indican ciertas restricciones
+/* En al consigna, se indican ciertas reglas de negocio
  * Para poder cumplir con estas restricciones, necesitamos ciertos triggers que nos ayudena  cumplirlas.
  * En este trigger BEFORE INSERT para DetallePedidos asegura que:
  * -> se consulte el stock disponible y el precio unitario actual del producto (según su idproducto).
  * -> se produzca un error si el stock es insuficiente para la cantidad solicitada.
  * -> se asigne el precio unitario del producto en el campo correspondiente del detalle.
+ * Actualizacion: 12/04/2025: ahora indica producto y stock cuando genera el error (generamos un error en la inserción del producto 10)
  */
 DELIMITER $$
 CREATE TRIGGER trg_before_insert_detalle
@@ -211,20 +211,24 @@ FOR EACH ROW
 BEGIN
     DECLARE v_stock INT;
     DECLARE v_precio DECIMAL(10,2);
+    DECLARE v_desc VARCHAR(255);
+    DECLARE v_msg VARCHAR(512);
 
-    -- Obtener stock y precio unitario del producto
-    SELECT Stock, PrecioUnitario
-      INTO v_stock, v_precio
+    -- Consultamos el stock, precio y descripción del producto a insertar
+    SELECT Stock, PrecioUnitario, Descripcion
+      INTO v_stock, v_precio, v_desc
       FROM Productos
      WHERE idproducto = NEW.idproducto;
      
-    -- Verificar que haya stock suficiente
+    -- Verificamos que haya stock suficiente; sino generamos un error informativo
     IF v_stock < NEW.cantidad THEN
-        SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'Stock insuficiente para el producto';
+        SET v_msg = CONCAT('Stock insuficiente para el producto ', v_desc,
+                           '. Stock disponible: ', v_stock,
+                           '. Cantidad requerida: ', NEW.cantidad);
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_msg;
     END IF;
     
-    -- Asignar el precio unitario obtenido
+    -- Asignar automáticamente el precio unitario del producto al detalle del pedido
     SET NEW.PrecioUnitario = v_precio;
 END;
 $$
@@ -248,6 +252,36 @@ BEGIN
     END IF;
 END;
 $$
+DELIMITER ;
+
+
+/* Este trigger es practicamente identico al anterior, solo que se ejecuta durante la inserción, y en la tabla DetallePedidos
+ * ¿por qué? porque el trigger anterior no sirve cuando se realiza la inserción directamente como confirmado
+ * si la lógica de negocios es que un pedido ingresa como pendiente si o si, y luego debiera ser actualizado,
+ * este trigger no tendría sentido. Pero como estamos realizando inserciones con pedidos que pueden tener estado
+ * çonfirmado' al momento del INSERT, entonces este trigger es fundamental para actualizar el stock. Además, cuando
+ * hacemos este tipo de inserciones (como en este TP), en ese momento aún no existen los detalles del pedido, entonces
+ * la actualización no se realiza (por eso la hacemos sobre DetallePedidos).
+ */
+DELIMITER $$
+CREATE TRIGGER trg_after_insert_detalle_stock
+AFTER INSERT ON DetallePedidos
+FOR EACH ROW
+BEGIN
+    DECLARE v_estado ENUM('pendiente','confirmado','anulado');
+    
+    -- Obtenemos el estado del pedido correspondiente al detalle
+    SELECT Estado 
+      INTO v_estado 
+      FROM Pedidos 
+     WHERE NumeroPedido = NEW.NumeroPedido;
+    
+    IF v_estado = 'confirmado' THEN
+        UPDATE Productos
+        SET Stock = Stock - NEW.cantidad
+        WHERE idproducto = NEW.idproducto;
+    END IF;
+END$$
 DELIMITER ;
 
 
@@ -275,6 +309,28 @@ BEGIN
         INSERT INTO LogAnulaciones (idLogAnulaciones, idpedido, FechaAnulacion, Observaciones)
         VALUES (UUID_TO_BIN(UUID()), NEW.idpedido, NOW(),
                 CONCAT('Pedido ', NEW.NumeroPedido, ' anulado.'));
+    END IF;
+END;
+$$
+DELIMITER ;
+
+
+/* Este triger, verifica que cuando se inserte un nuevo producto, el valor de Stock se encuentre el máximo y mínomo posible.
+ * Atento a la regla de negocio que indica:
+ * Al ingresar un nuevo producto, se debe controlar que el stock se encuentre entre los límites de stock mínimo y máximo.
+ */
+DELIMITER $$
+CREATE TRIGGER trg_before_insert_productos
+BEFORE INSERT ON Productos
+FOR EACH ROW
+BEGIN
+    DECLARE v_msg VARCHAR(512);
+
+    IF NEW.Stock < NEW.StockMin OR NEW.Stock > NEW.StockMax THEN
+        SET v_msg = CONCAT('El stock (', NEW.Stock, 
+                           ') debe estar entre ', NEW.StockMin, 
+                           ' y ', NEW.StockMax, '.');
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_msg;
     END IF;
 END;
 $$
@@ -391,16 +447,16 @@ SET @uuid_DP01r2 = UUID_TO_BIN(UUID()); -- Pedido 1 Renglón 2
 SET @uuid_DP01r3 = UUID_TO_BIN(UUID()); -- Pedido 1 Renglón 3
 INSERT INTO DetallePedidos (idDetallePedido, NumeroPedido, renglon, idproducto, cantidad)
 VALUES 
-    (@uuid_DP01r1, @numPedido, 1, @uuid_prod01, 5),
-    (@uuid_DP01r2, @numPedido, 2, @uuid_prod02, 3),
-    (@uuid_DP01r3, @numPedido, 3, @uuid_prod03, 2);
+    (@uuid_DP01r1, @numPedido, 1, @uuid_prod01, 58),
+    (@uuid_DP01r2, @numPedido, 2, @uuid_prod02, 32),
+    (@uuid_DP01r3, @numPedido, 3, @uuid_prod03, 211);
 
 
 -- Pedido 02 de 10 (1 renglón)
 SELECT NumeroPedido INTO @numPedido FROM Pedidos WHERE idpedido = @uuid_pedido02;
 SET @uuid_DP02r1 = UUID_TO_BIN(UUID());
 INSERT INTO DetallePedidos (idDetallePedido, NumeroPedido, renglon, idproducto, cantidad)
-VALUES (@uuid_DP02r1, @numPedido, 1, @uuid_prod05, 20);
+VALUES (@uuid_DP02r1, @numPedido, 1, @uuid_prod05, 36);
 
 
 -- Pedido 03 de 10 (2 renglones)
@@ -423,7 +479,7 @@ INSERT INTO DetallePedidos (idDetallePedido, NumeroPedido, renglon, idproducto, 
 VALUES 
     (@uuid_DP04r1, @numPedido, 1, @uuid_prod09, 15),
     (@uuid_DP04r2, @numPedido, 2, @uuid_prod06, 22),
-    (@uuid_DP04r3, @numPedido, 3, @uuid_prod08, 4);
+    (@uuid_DP04r3, @numPedido, 3, @uuid_prod08, 10);
 
 
 -- Pedido 05 de 10 (1 renglón)
@@ -465,7 +521,7 @@ SET @uuid_DP08r2 = UUID_TO_BIN(UUID());
 
 INSERT INTO DetallePedidos (idDetallePedido, NumeroPedido, renglon, idproducto, cantidad)
 VALUES 
-    (@uuid_DP08r1, @numPedido, 1, @uuid_prod08, 8),
+    (@uuid_DP08r1, @numPedido, 1, @uuid_prod08, 108),
     (@uuid_DP08r2, @numPedido, 2, @uuid_prod06, 625);
 
 
@@ -487,6 +543,6 @@ INSERT INTO DetallePedidos (idDetallePedido, NumeroPedido, renglon, idproducto, 
 VALUES 
     (@uuid_DP10r1, @numPedido, 1, @uuid_prod05, 15),
     (@uuid_DP10r2, @numPedido, 2, @uuid_prod03, 22),
-    (@uuid_DP10r3, @numPedido, 3, @uuid_prod08, 490);
+    (@uuid_DP10r3, @numPedido, 3, @uuid_prod08, 212); -- Aquí generamos un ERROR (a propósito). Cambiar el número para ejecución exitosa
 
 
