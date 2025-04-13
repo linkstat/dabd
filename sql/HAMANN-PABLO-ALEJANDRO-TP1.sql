@@ -570,20 +570,59 @@ GROUP BY v.idvendedor, v.Apellido, v.Nombres, v.DNI, v.email;
 
 
 -- Detalle de pedidos con un total mayor a un determinado valor umbral (NumeroPedido, fecha, TotalPedido).
+SET @valorUmbral = 500000.00;
+SELECT p.NumeroPedido, p.fecha AS Fecha, SUM(d.Total) AS TotalPedido
+FROM Pedidos p
+JOIN detallepedidos d ON p.NumeroPedido = d.NumeroPedido
+GROUP BY p.NumeroPedido, p.fecha
+HAVING TotalPedido > @valorUmbral;
 
 
 -- Lista de productos vendidos entre fechas. (Descripción, CantidadTotal). CantidadTotal se calcula sumando todas las cantidades vendidas del producto.
+SET @fecha_desde = '2025-04-01';
+SET @fecha_hasta = '2025-04-30';
+SELECT pr.Descripcion, SUM(dp.cantidad) AS CantidadTotal
+FROM Pedidos pe
+JOIN DetallePedidos dp ON pe.NumeroPedido = dp.NumeroPedido
+JOIN Productos pr ON dp.idproducto = pr.idproducto
+WHERE pe.fecha BETWEEN @fecha_desde AND @fecha_hasta
+GROUP BY pr.Descripcion;
 
-
--- ¿Cuál es el proveedor que realizó más? 
+-- ¿Cuál es el proveedor que realizó más?
+/* Esta pregunta no se entiende del todo... tal vez se refiere al proveedor del cual más productos se vendieron...
+ * (por ejemplo, Si Arcor, Marolio, etc), o tal vez al proveedor del cual más productos compré / recibí.
+ * Acordemos que es el proveedor más vendido.
+ */
+SELECT prov.NombreProveedor, SUM(dp.cantidad) AS TotalProductosVendidos
+FROM Proveedores prov
+JOIN Productos prod ON prov.idproveedor = prod.idproveedor
+JOIN DetallePedidos dp 
+  ON prod.idproducto = dp.idproducto
+GROUP BY prov.idproveedor, prov.NombreProveedor
+ORDER BY TotalProductosVendidos DESC
+LIMIT 1;
 
 
 -- Detalle de clientes registrados que nunca realizaron un pedido. (apellido, nombres, e-mail).
+SELECT c.Apellido, c.Nombres, c.mail AS "Email"
+FROM Clientes c
+LEFT JOIN Pedidos p ON c.idcliente = p.idcliente
+WHERE p.idcliente IS NULL;
 
 
 -- Detalle de clientes que realizaron menos de dos pedidos. (apellido, nombres, e-mail).
+SET @cantPedidos = 2;
+SELECT c.Apellido, c.Nombres, c.mail AS "Email"
+FROM Clientes c
+LEFT JOIN Pedidos p ON c.idcliente = p.idcliente
+GROUP BY c.idcliente, c.Apellido, c.Nombres, c.mail
+HAVING COUNT(p.idpedido) < @cantPedidos;
 
 
 -- Cantidad total vendida por origen de producto.
+SELECT p.origen AS "Origen", SUM(d.cantidad) AS "CantidadTotalVendida"
+FROM Productos p
+JOIN DetallePedidos d ON p.idproducto = d.idproducto
+GROUP BY p.origen;
 
 
