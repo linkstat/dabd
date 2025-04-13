@@ -113,6 +113,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- Creación de las tablas del modelo dado
 CREATE TABLE Clientes (
     idcliente BINARY(16) NOT NULL PRIMARY KEY,
+    DNI VARCHAR(20) NOT NULL,
     Apellido VARCHAR(100) NOT NULL,
     Nombres VARCHAR(100) NOT NULL,
     Direccion VARCHAR(255) NOT NULL,
@@ -349,13 +350,13 @@ SET @uuid_cliente3 = UUID_TO_BIN(UUID());
 SET @uuid_cliente4 = UUID_TO_BIN(UUID());
 SET @uuid_cliente5 = UUID_TO_BIN(UUID());
 
-INSERT INTO Clientes (idcliente, Apellido, Nombres, Direccion, mail)
+INSERT INTO Clientes (idcliente, DNI, Apellido, Nombres, Direccion, mail)
 VALUES
-	(@uuid_cliente1, 'Rojas Valdivia', 'Lucy Amanda', 'Av. Sabatini 3288', 'lucyamanda23@latinmail.com'),
-	(@uuid_cliente2, 'Alcaide', 'Santiago Agustín', 'Yrigoyen 733 5 C, La Plata, Buenos Aires', 'santialcaide@mineral.ru'),
-	(@uuid_cliente3, 'Roqué', 'Juan Manuel', 'Avellaneda 935, La Banda, Santiago del Estero', 'jmroque@yustech.com.ar'),
-	(@uuid_cliente4, 'Pérez', 'Carlos Enrique', 'Bedoya 724, Córdoba, Córdoba', 'carlitosperez@gmail.com'),
-	(@uuid_cliente5, 'Sánchez', 'Omar Wenceslao', 'Rivadavia, 724 3 C, Rosario, Santa Fe', 'wen733@mail.ru');
+	(@uuid_cliente1, '18465781', 'Rojas Valdivia', 'Lucy Amanda', 'Av. Sabatini 3288', 'lucyamanda23@latinmail.com'),
+	(@uuid_cliente2, '39512723', 'Alcaide', 'Santiago Agustín', 'Yrigoyen 733 5 C, La Plata, Buenos Aires', 'santialcaide@mineral.ru'),
+	(@uuid_cliente3, '22101645', 'Roqué', 'Juan Manuel', 'Avellaneda 935, La Banda, Santiago del Estero', 'jmroque@yustech.com.ar'),
+	(@uuid_cliente4, '42013728', 'Pérez', 'Carlos Enrique', 'Bedoya 724, Córdoba, Córdoba', 'carlitosperez@gmail.com'),
+	(@uuid_cliente5, '12309421', 'Sánchez', 'Omar Wenceslao', 'Rivadavia, 724 3 C, Rosario, Santa Fe', 'wen733@mail.ru');
 
 
 -- Ingresar 3 proveedores.
@@ -425,16 +426,16 @@ SET @uuid_pedido10 = UUID_TO_BIN(UUID());
 -- Genero pedidos (al hacer un INSERT MULTIROW, pierdo la posibilidad de usar LAST_INSERT_ID(); para la variable @numPedido, pero sigue siendo más legible y me resulta cómodo en gral)
 INSERT INTO Pedidos (idpedido, idcliente, idvendedor, fecha, Estado)
 VALUES
-	(@uuid_pedido01, @uuid_cliente1, @uuid_vendedor1, '2025-04-05', 'confirmado'),
-	(@uuid_pedido02, @uuid_cliente5, @uuid_vendedor2, '2025-04-05', 'confirmado'),
-	(@uuid_pedido03, @uuid_cliente1, @uuid_vendedor1, '2025-04-05', 'pendiente'),
-	(@uuid_pedido04, @uuid_cliente4, @uuid_vendedor2, '2025-04-05', 'confirmado'),
-	(@uuid_pedido05, @uuid_cliente2, @uuid_vendedor3, '2025-04-05', 'confirmado'),
-	(@uuid_pedido06, @uuid_cliente2, @uuid_vendedor3, '2025-04-05', 'pendiente'),
-	(@uuid_pedido07, @uuid_cliente1, @uuid_vendedor3, '2025-04-05', 'confirmado'),
-	(@uuid_pedido08, @uuid_cliente3, @uuid_vendedor2, '2025-04-05', 'confirmado'),
-	(@uuid_pedido09, @uuid_cliente4, @uuid_vendedor2, '2025-04-05', 'pendiente'),
-	(@uuid_pedido10, @uuid_cliente3, @uuid_vendedor2, '2025-04-05', 'confirmado');
+	(@uuid_pedido01, @uuid_cliente1, @uuid_vendedor1, '2025-02-23', 'confirmado'),
+	(@uuid_pedido02, @uuid_cliente5, @uuid_vendedor2, '2025-03-14', 'confirmado'),
+	(@uuid_pedido03, @uuid_cliente1, @uuid_vendedor1, '2025-04-04', 'pendiente'),
+	(@uuid_pedido04, @uuid_cliente4, @uuid_vendedor2, '2025-01-28', 'confirmado'),
+	(@uuid_pedido05, @uuid_cliente2, @uuid_vendedor3, '2025-04-11', 'confirmado'),
+	(@uuid_pedido06, @uuid_cliente2, @uuid_vendedor3, '2025-02-18', 'pendiente'),
+	(@uuid_pedido07, @uuid_cliente1, @uuid_vendedor3, '2025-01-08', 'confirmado'),
+	(@uuid_pedido08, @uuid_cliente3, @uuid_vendedor2, '2025-03-05', 'confirmado'),
+	(@uuid_pedido09, @uuid_cliente4, @uuid_vendedor2, '2025-04-10', 'pendiente'),
+	(@uuid_pedido10, @uuid_cliente3, @uuid_vendedor2, '2025-03-21', 'confirmado');
 
 
 -- Pedido 01 de 10 (3 renglones)
@@ -543,6 +544,41 @@ INSERT INTO DetallePedidos (idDetallePedido, NumeroPedido, renglon, idproducto, 
 VALUES 
     (@uuid_DP10r1, @numPedido, 1, @uuid_prod05, 15),
     (@uuid_DP10r2, @numPedido, 2, @uuid_prod03, 22),
-    (@uuid_DP10r3, @numPedido, 3, @uuid_prod08, 212); -- Aquí generamos un ERROR (a propósito). Cambiar el número para ejecución exitosa
+    (@uuid_DP10r3, @numPedido, 3, @uuid_prod08, 210); -- Aquí podemos generar un error a propósito, si establecemos la cantidad (210) a >211
+
+
+
+/*
+ * Sección 3: Resolución de las consultas mediante las sentencias SQL.
+ */
+
+-- Detalle de clientes que realizaron pedidos entre fechas (apellido, nombres, DNI, correo electrónico).
+SET @fehca_desde = '2025-04-01';
+SET @fehca_hasta = '2025-04-30';
+SELECT DISTINCT c.Apellido, c.Nombres, c.DNI, c.mail AS 'Email'
+FROM Clientes c
+INNER JOIN Pedidos p ON c.idcliente = p.idcliente
+WHERE p.fecha BETWEEN @fehca_desde AND @fehca_hasta;
+
+
+-- Detalle de vendedores con la cantidad de pedidos realizados (apellido, nombres, DNI, correo electrónico, CantidadPedidos).
+
+
+-- Detalle de pedidos con un total mayor a un determinado valor umbral (NumeroPedido, fecha, TotalPedido).
+
+
+-- Lista de productos vendidos entre fechas. (Descripción, CantidadTotal). CantidadTotal se calcula sumando todas las cantidades vendidas del producto.
+
+
+-- ¿Cuál es el proveedor que realizó más? 
+
+
+-- Detalle de clientes registrados que nunca realizaron un pedido. (apellido, nombres, e-mail).
+
+
+-- Detalle de clientes que realizaron menos de dos pedidos. (apellido, nombres, e-mail).
+
+
+-- Cantidad total vendida por origen de producto.
 
 
