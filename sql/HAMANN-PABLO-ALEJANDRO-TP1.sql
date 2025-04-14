@@ -30,7 +30,7 @@
  * Este archivo es parte del siguiente repositorio en GitHub (creado para esta materia):
  *
  * Repositorio:   https://github.com/linkstat/dabd
- * Este archivo:  https://github.com/linkstat/dabd/blob/main/sql/HAMANN-PABLO-ALEJANDRO-TP1.sql
+ * Este archivo:  https://raw.githubusercontent.com/linkstat/dabd/refs/heads/main/sql/HAMANN-PABLO-ALEJANDRO-TP1.sql
  *
  */
 
@@ -40,7 +40,7 @@
  * Sección 0: Tareas previas a la creación de la estructura de la base de datos.
  */
 
--- Definición del nombre de la BD vía una variable (apra evitar errores de tipeo, defino una sola vez, y utilizo luego la variable)
+-- Definición del nombre de la BD vía una variable (para evitar errores de tipeo, defino una sola vez, y utilizo luego la variable)
 SET @dbname = 'pedidos';
 
 -- Borrado de la BD (si existiera)
@@ -166,7 +166,7 @@ CREATE TABLE Pedidos (
 );
 
 
--- Misma lógica de 'modificación sutil' que poara la tabla anterior
+-- Misma lógica de 'modificación sutil' que para la tabla anterior
 CREATE TABLE DetallePedidos (
     idDetallePedido BINARY(16) NOT NULL PRIMARY KEY,
     NumeroPedido INT NOT NULL,
@@ -181,7 +181,7 @@ CREATE TABLE DetallePedidos (
     CONSTRAINT fk_detalle_producto FOREIGN KEY (idproducto) REFERENCES Productos(idproducto)
 );
 
-/* Esta tabla no se explicita en la actividad propueta, pero sin embargo, la penúltima regla dice:
+/* Esta tabla no se explicita en la actividad propuesta, pero sin embargo, la penúltima regla dice:
  * Todo pedido anulado debe ser auditado, grabando en la tabla de log, la información
  * del pedido anulado, indicando la fecha de anulación.
  */
@@ -198,8 +198,8 @@ CREATE TABLE LogAnulaciones (
 SET FOREIGN_KEY_CHECKS = 1;
 
 
-/* En al consigna, se indican ciertas reglas de negocio
- * Para poder cumplir con estas restricciones, necesitamos ciertos triggers que nos ayudena  cumplirlas.
+/* En la consigna, se indican ciertas reglas de negocio
+ * Para poder cumplir con estas restricciones, necesitamos ciertos triggers que nos ayuden a cumplirlas.
  * En este trigger BEFORE INSERT para DetallePedidos asegura que:
  * -> se consulte el stock disponible y el precio unitario actual del producto (según su idproducto).
  * -> se produzca un error si el stock es insuficiente para la cantidad solicitada.
@@ -364,7 +364,6 @@ VALUES
 SET @uuid_proveedor1 = UUID_TO_BIN(UUID());
 SET @uuid_proveedor2 = UUID_TO_BIN(UUID());
 SET @uuid_proveedor3 = UUID_TO_BIN(UUID());
-
 
 INSERT INTO Proveedores (idproveedor, NombreProveedor, Direccion, email)
 VALUES
