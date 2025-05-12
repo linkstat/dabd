@@ -1,36 +1,6 @@
-/* TRABAJO PRÁCTICO 1
+/* TRABAJO PRÁCTICO 2
  *
- *
- * .            Alumno:  HAMANN, PABLO ALEJANDRO
- * .            Legajo:  VINF010782
- * .               Año:  2025
- * . Prof. Disciplinar:  CASTELLI, SILVIA LAURA LANZA
- * .     Prof. Experto:  DAUBROWSKY, RICARDO RAMÓN
- * 
- * Software utilizado para el desarrollo del presente TP:
- * . Motor de BD:   - MariaDB 11.4.3
- * . Clientes SQL:  - HeidiSQL 12.6.0
- * .                - Navicat Premium 17.0.8
- *	.                - MySQL Workbench 8.0 CE
- * .        Otros:  - Git Bash
- * .                - Notepad++ 
- * .                - VSCode
- *
- *
- * Consideraciones a tener en cuenta:
- *
- * 1. Decidí utilizar UUID almacenado como BINARIO para los IDs.
- *    Justificación: es una práctica que adopté de Seminario de Práctica Profesional, y que me gustaría seguir aplicando cada vez que pueda.
- *
- * 2. El presente script está pensado como un "todo en uno", en el sentido de que su ejecución, ELIMINA COMPLETAMENTE LA BASE DE DATOS, y RECREA TODO DESDE CERO.
- *    Justificación: es mucho más fácil para probar que todo fucnciona bien desde cero (con cada ejecución), sobre todo cuando se trabaja realizando constantes cambios.
- *
- *
- * = Repositorio en GitHub =
- * Este archivo es parte del siguiente repositorio en GitHub (creado para esta materia):
- *
- * Repositorio:   https://github.com/linkstat/dabd
- * Este archivo:  https://raw.githubusercontent.com/linkstat/dabd/refs/heads/main/sql/HAMANN-PABLO-ALEJANDRO-TP1.sql
+ * se debe adaptar el script MySQL/MariaDB, de forma tal que funcione en Oracle XE Database 21
  *
  */
 
