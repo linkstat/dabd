@@ -643,7 +643,9 @@ GROUP BY p.origen;
 
 
 
--- PUTOS SOLICITADOS EN EL TP2
+-- *** PUNTOS SOLICITADOS EN EL TP2 *** --
+
+
 
 /* PUNTO 1:
  * Crear un bloque PL SQL que permita, mediante una transacción, realizar el
@@ -651,150 +653,151 @@ GROUP BY p.origen;
  * la actualización del stock de los productos pedidos. En caso de producirse un
  * error, la transacción debe ser cancelada. 
  */
-    SET SERVEROUTPUT ON
-    /
-    
-    -- 1) Pedidos de valores al usuario (intercalado ID ⇄ cantidad)
-    ACCEPT cli_uuid   CHAR PROMPT 'UUID Cliente (36 chars, incl. guiones): '
-    ACCEPT vend_uuid  CHAR PROMPT 'UUID Vendedor (36 chars, incl. guiones): '
-    ACCEPT prod1_uuid CHAR PROMPT '1) UUID Producto 1: '
-    ACCEPT qty1       NUMBER PROMPT    '   Cantidad producto 1: '
-    ACCEPT prod2_uuid CHAR PROMPT '2) UUID Producto 2 [ENTER para omitir]: '
-    ACCEPT qty2       NUMBER PROMPT    '   Cantidad producto 2: '
-    ACCEPT prod3_uuid CHAR PROMPT '3) UUID Producto 3 [ENTER para omitir]: '
-    ACCEPT qty3       NUMBER PROMPT    '   Cantidad producto 3: '
-    /
-    
-    DECLARE
-      -- Cabecera
-      v_idPedido   RAW(16) := SYS_GUID();
-      v_numPedido  NUMBER;
-    
-      -- Valores ingresados (texto)
-      v_cli_hex    VARCHAR2(36) := '&cli_uuid';
-      v_vend_hex   VARCHAR2(36) := '&vend_uuid';
-      v_prod1_hex  VARCHAR2(36) := '&prod1_uuid';
-      v_prod2_hex  VARCHAR2(36) := '&prod2_uuid';
-      v_prod3_hex  VARCHAR2(36) := '&prod3_uuid';
-      v_qty1       PLS_INTEGER := &qty1;
-      v_qty2       PLS_INTEGER := &qty2;
-      v_qty3       PLS_INTEGER := &qty3;
-    
-      -- Conversión a RAW
-      v_idCliente  RAW(16);
-      v_idVendedor RAW(16);
-    
-      -- Tablas asociativas para detalle
-      TYPE t_raw_tab IS TABLE OF RAW(16) INDEX BY PLS_INTEGER;
-      TYPE t_int_tab IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
-      v_ids  t_raw_tab;
-      v_qtys t_int_tab;
-    
-      v_stock   NUMBER;
-      v_n       PLS_INTEGER := 1;  -- mínimo 1 línea
+
+SET SERVEROUTPUT ON
+/
+
+-- Pedidos de valores al usuario (intercalado ID y respectiva cantidad)
+ACCEPT cli_uuid   CHAR PROMPT 'UUID Cliente (36 chars, incl. guiones): '
+ACCEPT vend_uuid  CHAR PROMPT 'UUID Vendedor (36 chars, incl. guiones): '
+ACCEPT prod1_uuid CHAR PROMPT '1) UUID Producto 1: '
+ACCEPT qty1       NUMBER PROMPT    '   Cantidad producto 1: '
+ACCEPT prod2_uuid CHAR PROMPT '2) UUID Producto 2 [ENTER para omitir]: '
+ACCEPT qty2       NUMBER PROMPT    '   Cantidad producto 2: '
+ACCEPT prod3_uuid CHAR PROMPT '3) UUID Producto 3 [ENTER para omitir]: '
+ACCEPT qty3       NUMBER PROMPT    '   Cantidad producto 3: '
+/
+
+DECLARE
+  -- Cabecera
+  v_idPedido   RAW(16) := SYS_GUID();
+  v_numPedido  NUMBER;
+
+  -- Valores ingresados (texto)
+  v_cli_hex    VARCHAR2(36) := '&cli_uuid';
+  v_vend_hex   VARCHAR2(36) := '&vend_uuid';
+  v_prod1_hex  VARCHAR2(36) := '&prod1_uuid';
+  v_prod2_hex  VARCHAR2(36) := '&prod2_uuid';
+  v_prod3_hex  VARCHAR2(36) := '&prod3_uuid';
+  v_qty1       PLS_INTEGER := &qty1;
+  v_qty2       PLS_INTEGER := &qty2;
+  v_qty3       PLS_INTEGER := &qty3;
+
+  -- Conversión a RAW
+  v_idCliente  RAW(16);
+  v_idVendedor RAW(16);
+
+  -- Tablas asociativas para detalle
+  TYPE t_raw_tab IS TABLE OF RAW(16) INDEX BY PLS_INTEGER;
+  TYPE t_int_tab IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
+  v_ids  t_raw_tab;
+  v_qtys t_int_tab;
+
+  v_stock   NUMBER;
+  v_n       PLS_INTEGER := 1;  -- mínimo: 1 renglón
+BEGIN
+  -- Validar y convertir Cliente
+  IF NOT REGEXP_LIKE(v_cli_hex, '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$') THEN
+    RAISE_APPLICATION_ERROR(-20030, 'UUID Cliente inválido: '||v_cli_hex);
+  END IF;
+  v_idCliente := uuid_to_raw(v_cli_hex);
+
+  -- Validar y convertir Vendedor
+  IF NOT REGEXP_LIKE(v_vend_hex, '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$') THEN
+    RAISE_APPLICATION_ERROR(-20031, 'UUID Vendedor inválido: '||v_vend_hex);
+  END IF;
+  v_idVendedor := uuid_to_raw(v_vend_hex);
+
+  -- Producto 1 (obligatorio)
+  IF NOT REGEXP_LIKE(v_prod1_hex, '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$') THEN
+    RAISE_APPLICATION_ERROR(-20032, 'UUID Producto 1 inválido: '||v_prod1_hex);
+  END IF;
+  v_ids(1)  := uuid_to_raw(v_prod1_hex);
+  v_qtys(1) := v_qty1;
+
+  -- Producto 2 (opcional)
+  IF TRIM(v_prod2_hex) IS NOT NULL THEN
+    IF v_qty2 IS NULL THEN
+      RAISE_APPLICATION_ERROR(-20033, 'Debe indicar cantidad para producto 2');
+    END IF;
+    IF NOT REGEXP_LIKE(v_prod2_hex, '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$') THEN
+      RAISE_APPLICATION_ERROR(-20034, 'UUID Producto 2 inválido: '||v_prod2_hex);
+    END IF;
+    v_ids(2)  := uuid_to_raw(v_prod2_hex);
+    v_qtys(2) := v_qty2;
+    v_n := 2;
+  END IF;
+
+  -- Producto 3 (opcional)
+  IF TRIM(v_prod3_hex) IS NOT NULL THEN
+    IF v_qty3 IS NULL THEN
+      RAISE_APPLICATION_ERROR(-20035, 'Debe indicarse cantidad para producto 3');
+    END IF;
+    IF NOT REGEXP_LIKE(v_prod3_hex, '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$') THEN
+      RAISE_APPLICATION_ERROR(-20036, 'UUID Producto 3 inválido: '||v_prod3_hex);
+    END IF;
+    v_ids(3)  := uuid_to_raw(v_prod3_hex);
+    v_qtys(3) := v_qty3;
+    v_n := 3;
+  END IF;
+
+  -- Insertar cabecera y obtener numero de pedido
+  INSERT INTO Pedidos(idpedido, idcliente, idvendedor, fecha, estado)
+    VALUES(v_idPedido, v_idCliente, v_idVendedor, SYSDATE, 'pendiente')
+    RETURNING numeropedido INTO v_numPedido;
+
+  -- Recorrer 1..v_n y procesar cada línea
+  FOR i IN 1..v_n LOOP
+    -- Intento leer el stock, pero si no existe el producto, capturo el error
     BEGIN
-      -- 1) Validar y convertir Cliente
-      IF NOT REGEXP_LIKE(v_cli_hex, '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$') THEN
-        RAISE_APPLICATION_ERROR(-20030, 'UUID Cliente inválido: '||v_cli_hex);
-      END IF;
-      v_idCliente := uuid_to_raw(v_cli_hex);
-    
-      -- 2) Validar y convertir Vendedor
-      IF NOT REGEXP_LIKE(v_vend_hex, '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$') THEN
-        RAISE_APPLICATION_ERROR(-20031, 'UUID Vendedor inválido: '||v_vend_hex);
-      END IF;
-      v_idVendedor := uuid_to_raw(v_vend_hex);
-    
-      -- 3) Producto 1 (obligatorio)
-      IF NOT REGEXP_LIKE(v_prod1_hex, '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$') THEN
-        RAISE_APPLICATION_ERROR(-20032, 'UUID Producto 1 inválido: '||v_prod1_hex);
-      END IF;
-      v_ids(1)  := uuid_to_raw(v_prod1_hex);
-      v_qtys(1) := v_qty1;
-    
-      -- 4) Producto 2 (opcional)
-      IF TRIM(v_prod2_hex) IS NOT NULL THEN
-        IF v_qty2 IS NULL THEN
-          RAISE_APPLICATION_ERROR(-20033, 'Debe indicar cantidad para producto 2');
-        END IF;
-        IF NOT REGEXP_LIKE(v_prod2_hex, '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$') THEN
-          RAISE_APPLICATION_ERROR(-20034, 'UUID Producto 2 inválido: '||v_prod2_hex);
-        END IF;
-        v_ids(2)  := uuid_to_raw(v_prod2_hex);
-        v_qtys(2) := v_qty2;
-        v_n := 2;
-      END IF;
-    
-      -- 5) Producto 3 (opcional)
-      IF TRIM(v_prod3_hex) IS NOT NULL THEN
-        IF v_qty3 IS NULL THEN
-          RAISE_APPLICATION_ERROR(-20035, 'Debe indicar cantidad para producto 3');
-        END IF;
-        IF NOT REGEXP_LIKE(v_prod3_hex, '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$') THEN
-          RAISE_APPLICATION_ERROR(-20036, 'UUID Producto 3 inválido: '||v_prod3_hex);
-        END IF;
-        v_ids(3)  := uuid_to_raw(v_prod3_hex);
-        v_qtys(3) := v_qty3;
-        v_n := 3;
-      END IF;
-    
-      -- 6) Insertar cabecera y obtener numero de pedido
-      INSERT INTO Pedidos(idpedido, idcliente, idvendedor, fecha, estado)
-        VALUES(v_idPedido, v_idCliente, v_idVendedor, SYSDATE, 'pendiente')
-        RETURNING numeropedido INTO v_numPedido;
-    
-      -- 7) Recorrer 1..v_n y procesar cada línea
-      FOR i IN 1..v_n LOOP
-        -- Intento leer el stock, pero si no existe el producto, capturo el error
-        BEGIN
-          SELECT stock INTO v_stock
-            FROM Productos
-           WHERE idproducto = v_ids(i)
-           FOR UPDATE;
-        EXCEPTION
-          WHEN NO_DATA_FOUND THEN
-            RAISE_APPLICATION_ERROR(
-              -20040,
-              'Producto inexistente: ' || raw_to_uuid(v_ids(i))
-            );
-        END;
-    
-        IF v_stock < v_qtys(i) THEN
-          RAISE_APPLICATION_ERROR(
-            -20010,
-            'Stock insuficiente (prod '||raw_to_uuid(v_ids(i))||
-            '): dispo '||v_stock||', solicitado '||v_qtys(i)
-          );
-        END IF;
-    
-        -- Insertar detalle
-        INSERT INTO DetallePedidos(
-          iddetallepedido, numeropedido, renglon, idproducto, cantidad
-        ) VALUES(
-          SYS_GUID(), v_numPedido, i, v_ids(i), v_qtys(i)
-        );
-    
-        -- Actualizar stock
-        UPDATE Productos
-           SET stock = stock - v_qtys(i)
-         WHERE idproducto = v_ids(i);
-      END LOOP;
-    
-      COMMIT;
-      DBMS_OUTPUT.PUT_LINE(
-        'Pedido '||v_numPedido||' registrado con '||v_n||' renglones.'
-      );
-    
+      SELECT stock INTO v_stock
+        FROM Productos
+        WHERE idproducto = v_ids(i)
+        FOR UPDATE;
     EXCEPTION
-      WHEN OTHERS THEN
-        ROLLBACK;
-        DBMS_OUTPUT.PUT_LINE('ERROR: '||SQLERRM);
+      WHEN NO_DATA_FOUND THEN
+        RAISE_APPLICATION_ERROR(
+          -20040,
+          'Producto inexistente: ' || raw_to_uuid(v_ids(i))
+        );
     END;
-    /
+
+    IF v_stock < v_qtys(i) THEN
+      RAISE_APPLICATION_ERROR(
+        -20010,
+        'Stock insuficiente (prod '||raw_to_uuid(v_ids(i))||
+        '): dispo '||v_stock||', solicitado '||v_qtys(i)
+      );
+    END IF;
+
+    -- Insertar detalle
+    INSERT INTO DetallePedidos(
+      iddetallepedido, numeropedido, renglon, idproducto, cantidad
+    ) VALUES(
+      SYS_GUID(), v_numPedido, i, v_ids(i), v_qtys(i)
+    );
+
+    -- Actualizar stock
+    UPDATE Productos
+        SET stock = stock - v_qtys(i)
+      WHERE idproducto = v_ids(i);
+  END LOOP;
+
+  COMMIT;
+  DBMS_OUTPUT.PUT_LINE(
+    'Pedido '||v_numPedido||' registrado con '||v_n||' renglones.'
+  );
+
+EXCEPTION
+  WHEN OTHERS THEN
+    ROLLBACK;
+    DBMS_OUTPUT.PUT_LINE('ERROR: '||SQLERRM);
+END;
+/
 
 
 /* A los fines de "probar" el bloque PL/SQL anterior, necesito obtener los IDs
- * (en mi caso UUIDs generadosaleatoriamente), para poder introducir en el 
+ * (en mi caso UUIDs generados aleatoriamente), para poder introducir en el 
  * bloque PL/SQL (cuando sea ejecutado). Entonces, realizamos la siguiente
  * consulta para obtnerlos.
  */
@@ -858,13 +861,13 @@ CREATE OR REPLACE PROCEDURE anular_pedido_confirmado (
   v_estado     VARCHAR2(15);
   v_stock      NUMBER;
 BEGIN
-  -- 1) Obtenemos idpedido y el estado del pedido
+  -- Obtenemos idpedido y el estado del pedido
   SELECT idpedido, estado
     INTO v_idPedido, v_estado
     FROM Pedidos
-   WHERE numeropedido = p_numPedido;          -- puede lanzar NO_DATA_FOUND :contentReference[oaicite:4]{index=4}
+   WHERE numeropedido = p_numPedido;    -- podría lanzar NO_DATA_FOUND
 
-  -- 2) Verificamos que esté confirmado
+  -- Verificamos que esté confirmado
   IF v_estado <> 'confirmado' THEN
     RAISE_APPLICATION_ERROR(
       -20020,
@@ -874,7 +877,7 @@ BEGIN
     );
   END IF;
 
-  -- 3) Reponemos stock para cada renglón
+  -- Reponemos stock para cada renglón
   FOR reg IN (
     SELECT idproducto, cantidad
       FROM DetallePedidos
@@ -882,28 +885,28 @@ BEGIN
   ) LOOP
     UPDATE Productos
        SET stock = stock + reg.cantidad
-     WHERE idproducto = reg.idproducto;   -- aquí actualizamos el stock, esto es equivalente a SELECT … FOR UPDATE + UPDATE :contentReference[oaicite:6]{index=6}
+     WHERE idproducto = reg.idproducto;    -- aquí actualizamos el stock ( equivalente a: SELECT ... FOR UPDATE + UPDATE)
   END LOOP;
 
-  -- 4) Marcamos como anulado el pedido
+  -- Marcamos como anulado el pedido
   UPDATE Pedidos
      SET estado = 'anulado'
    WHERE numeropedido = p_numPedido;
 
-  -- 5) Registramos en tabla de log
+  -- Registramos en tabla de log
   INSERT INTO LogAnulaciones (
     idLogAnulaciones,
     idpedido,
     FechaAnulacion,
     Observaciones
   ) VALUES (
-    SYS_GUID(),   -- con esto generamos un UUID en RAW(16) :contentReference[oaicite:7]{index=7}
+    SYS_GUID(),
     v_idPedido,
     SYSTIMESTAMP,
     'Pedido '||p_numPedido||' anulado.'
   );
 
-  COMMIT; -- confirma la transacción :contentReference[oaicite:8]{index=8}
+  COMMIT;
 
 EXCEPTION
   WHEN NO_DATA_FOUND THEN
@@ -914,13 +917,13 @@ EXCEPTION
     );
   WHEN OTHERS THEN
     ROLLBACK;
-    RAISE;   -- y estosirve para propagar otros errores
+    RAISE;
 END anular_pedido_confirmado;
 /
 
 
 /* Vamos a obtener un listado de pedidos de forma talque podamos seleccionar
- * alguno que nos permita probar el procedimientoa lmacenado anterior y
+ * alguno que nos permita probar el procedimiento almacenado anterior y
  * (posteriormente a su ejecución) luego poder verificar que se anuló.
  */
 SELECT
@@ -985,7 +988,7 @@ BEGIN
 END;
 /
 
--- Vamos a probar este trigger, y anulemosun pedido:(por ejemplo: nro 10)
+-- Vamos a probar este trigger, y anulemos un pedido:(por ejemplo: nro 10)
 EXEC anular_pedido_confirmado(7);
 
 -- Anulado un pedido, vamos a chequear la tabla de Logs:
