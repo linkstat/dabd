@@ -1,0 +1,15 @@
+#version: "3.8"
+services:
+  oracle-xe:
+    image: backup-oracle-xe:latest
+    container_name: oracle-xe
+    ports:
+      - "1521:1521"
+      - "5500:5500"
+    environment:
+      ORACLE_PWD: "dabdTP2"
+    volumes:
+      - oradata:/opt/oracle/oradata
+
+volumes:
+  oradata:
